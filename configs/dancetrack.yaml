@@ -1,0 +1,39 @@
+eps: 0.001
+eval_mode: False
+#eval_mode: True
+
+# optimizer
+lr: 0.0001
+# train
+data_dir: '/root/lanyun-tmp/data/DanceTrack/trackers'
+diffnet: HMINet
+interval: 5
+augment: True
+encoder_dim: 256
+tf_layer: 3
+epochs: 20
+batch_size: 8192
+seed: 123
+eval_every: 20
+gpus: [0]
+
+# Testing
+eval_at: 800
+#det_dir: "/root/lanyun-tmp/experiment/DiffMOT/detection_res"
+#info_dir: '/root/lanyun-tmp/data/DanceTrack'
+#reid_dir: "/root/lanyun-tmp/experiment/DiffMOT/othertools/DanceTrack/embeddings_yolox_x"
+#save_dir: "/root/lanyun-tmp/data/DanceTrack/results/val/yolox_m_lt_ddm_1000eps_deeper_800_1rev"
+det_dir: "/root/lanyun-tmp/experiment/DiffMOT/othertools/archive"
+info_dir: '/root/lanyun-tmp/data/DanceTrack/train'
+reid_dir: "/root/lanyun-tmp/experiment/DiffMOT/othertools/DanceTrack/embeddings_yolox_x"
+save_dir: "/root/lanyun-tmp/data/DanceTrack/results/val/yolox_m_lt_ddm_1000eps_deeper_800_1rev"
+eval_expname: lt_ddm_1000_deeper
+high_thres: 0.6
+low_thres: 0.4
+w_assoc_emb: 2.2
+aw_param: 1.7
+preprocess_workers: 16
+
+# Data Parameters:
+device: cuda
+eval_device: None

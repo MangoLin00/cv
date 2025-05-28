@@ -74,35 +74,23 @@ class STrack(BaseTrack):
     def multi_predict_diff(stracks, model, img_w, img_h):
         if len(stracks) > 0:
             dets = np.asarray([st.xywh.copy() for st in stracks]).reshape(-1, 4)
-
-            # 归一化操作
             dets[:, 0::2] = dets[:, 0::2] / img_w
             dets[:, 1::2] = dets[:, 1::2] / img_h
 
             conds = [st.conds for st in stracks]
-
-            # 生成预测的轨迹
             multi_track_pred = model.generate(conds, sample=1, bestof=True, img_w=img_w, img_h=img_h)
             track_pred = multi_track_pred.mean(0)
 
             track_pred = track_pred + dets
-            # 反归一化操作
             track_pred[:, 0::2] = track_pred[:, 0::2] * img_w
             track_pred[:, 1::2] = track_pred[:, 1::2] * img_h
             track_pred[:, 0] = track_pred[:, 0] - track_pred[:, 2] / 2
             track_pred[:, 1] = track_pred[:, 1] - track_pred[:, 3] / 2
-
-
             for i, st in enumerate(stracks):
                 st._tlwh = track_pred[i]
-                # 存储目标检测框的预测历史
                 st.xywh_pmemory.append(st.xywh.copy())
-                # 用于存储目标检测框的实际历史
                 st.xywh_amemory.append(st.xywh.copy())
-
-                # 计算检测框增量
                 tmp_delta_bbox = st.xywh.copy() - st.xywh_amemory[-2].copy()
-                # （当前检测框和检测框增量）拼接成一个条件特征向量。
                 tmp_conds = np.concatenate((st.xywh.copy(), tmp_delta_bbox))
                 st.conds.append(tmp_conds)
 
@@ -239,23 +227,19 @@ class STrack(BaseTrack):
 class diffmottracker(object):
     def __init__(self, config, frame_rate=30):
         self.config = config
-        self.tracked_stracks = []  # type: # list[STrack]   当前正在跟踪的目标
-        self.lost_stracks = []  # type: # list[STrack]      丢失的目标
-        self.removed_stracks = []  # type: # list[STrack]   移除的目标
+        self.tracked_stracks = [] 
+        self.lost_stracks = [] 
+        self.removed_stracks = [] 
 
         self.frame_id = 0
         self.det_thresh = self.config.high_thres
 
-        # 缓冲区的大小和目标在多少时间内未被检测到，系统将认为该目标已经丢失。
         self.buffer_size = int(frame_rate / 30.0 * 30)
         self.max_time_lost = self.buffer_size
-
-        # 图像标准化的均值和标准差
         self.mean = np.array([0.408, 0.447, 0.470], dtype=np.float32).reshape(1, 1, 3)
         self.std = np.array([0.289, 0.274, 0.278], dtype=np.float32).reshape(1, 1, 3)
 
         # self.kalman_filter = KalmanFilter()
-        # 初始化特征计算器（用于嵌入特征的提取）
         self.embedder = EmbeddingComputer(self.config, 'dancetrack', False, True)
         self.alpha_fixed_emb = 0.95
 
@@ -265,20 +249,17 @@ class diffmottracker(object):
         self.embedder.dump_cache()
 
     def update(self, dets_norm, model, frame_id, img_w, img_h, tag, img=None):
-        self.model = model  # 设置模型
-        self.frame_id += 1  # 增加帧编号
-        activated_starcks = []  # 激活的轨迹
-        refind_stracks = []  # 重新找到的轨迹
-        lost_stracks = []  # 丢失的轨迹
-        removed_stracks = []  # 被移除的轨迹
-        dets = dets_norm.copy()  # 复制检测结果
+        self.model = model  
+        self.frame_id += 1  
+        activated_starcks = []  
+        refind_stracks = []  
+        lost_stracks = []  
+        removed_stracks = []  
+        dets = dets_norm.copy()  
 
-        # 将检测结果转换为左上角和右下角的坐标
+
         dets[:, 2] = dets[:, 0] + dets[:, 2]
         dets[:, 3] = dets[:, 1] + dets[:, 3]
-
-        # 用于标识检测实例的置信度得分（dets[:, 4]）是否大于设定的检测阈值 self.det_thresh。
-        # 只有得分高于该阈值的检测实例将被保留。
         remain_inds = dets[:, 4] > self.det_thresh
         inds_low = dets[:, 4] > self.config.low_thres
         inds_high = dets[:, 4] < self.det_thresh
@@ -286,7 +267,6 @@ class diffmottracker(object):
         dets_second = dets[inds_second]
         dets = dets[remain_inds]
 
-        # 计算检测框的特征嵌入
         dets_embs = np.ones((dets.shape[0], 1))
         if dets.shape[0] != 0:
             dets_embs = self.embedder.compute_embedding(img, dets[:, :4], tag)
@@ -318,38 +298,29 @@ class diffmottracker(object):
 
         trk_embs = [st.emb for st in strack_pool]
         trk_embs = np.array(trk_embs)
-        # 计算嵌入代价矩阵
         emb_cost = None if (trk_embs.shape[0] == 0 or dets_embs.shape[0] == 0) else trk_embs @ dets_embs.T
-        # 计算IOU矩阵
         dists = matching.iou_distance(strack_pool, detections)
         iou_matrix = 1 - dists
 
-        # 检查IOU矩阵是否有效
         if min(iou_matrix.shape) > 0:
             a = (iou_matrix > 0.1).astype(np.int32)
-            # 判断是否一对一匹配
             if a.sum(1).max() == 1 and a.sum(0).max() == 1:
                 matched_indices = np.stack(np.where(a), axis=1)
             else:
-                # 如果不是一对一匹配
                 if emb_cost is None:
                     emb_cost = 0
-                # 计算加权代价矩阵
                 w_assoc_emb = self.config.w_assoc_emb
                 aw_param = self.config.aw_param
 
                 w_matrix = matching.compute_aw_new_metric(emb_cost, w_assoc_emb, aw_param)
                 emb_cost *= w_matrix
 
-                # 合并 IOU 和嵌入代价，计算最终代价矩阵
                 final_cost = -(iou_matrix + emb_cost)
-                # 使用线性分配算法（如匈牙利算法）对最终代价矩阵进行优化匹配
                 matched_indices = matching.linear_assignment2(final_cost)
         else:
             matched_indices = np.empty(shape=(0, 2))
 
 
-        # 识别未匹配的检测目标和未匹配的跟踪目标
         unmatched_detections = []
         for d, det in enumerate(detections):
             if d not in matched_indices[:, 1]:
@@ -360,7 +331,6 @@ class diffmottracker(object):
                 unmatched_trackers.append(t)
 
         # filter out matched with low IOU
-        # 过滤掉低IOU的匹配
         matches = []
         for m in matched_indices:
             if iou_matrix[m[0], m[1]] < 0.1:
@@ -376,32 +346,25 @@ class diffmottracker(object):
         u_track = np.array(unmatched_trackers)
         u_detection = np.array(unmatched_detections)
 
-        # 更新已匹配的跟踪目标（track）和检测目标（det）的状态
         for itracked, idet in matches:
             track = strack_pool[itracked]
             det = detections[idet]
             alp = dets_alpha[idet]
-            # 已跟踪目标（Tracked）：直接更新
             if track.state == TrackState.Tracked:
                 track.update(det, self.frame_id)
                 track.update_features(det.emb, alp)
                 activated_starcks.append(track)
-            # 其他状态目标（如丢失目标）：重新激活
             else:
                 track.re_activate(det, self.frame_id, new_id=False)
                 track.update_features(det.emb, alp)
                 refind_stracks.append(track)
 
-        # 第二组检测（dets_second）：中等置信度检测，用于补充处理，解决漏检问题。
         if len(dets_second) > 0:
             '''Detections'''
             detections_second = [STrack(STrack.tlbr_to_tlwh(tlbrs[:4]), tlbrs[4], buffer_size=30) for
                                  (tlbrs) in dets_second[:, :5]]
         else:
             detections_second = []
-        # 处理与“第二组检测”（detections_second）的匹配。
-        # 将暂时未匹配的跟踪目标（u_track）与·等置信度的检测框进行匹配，
-        # 并根据匹配结果更新目标状态或重新激活目标
         r_tracked_stracks = [strack_pool[i] for i in u_track if strack_pool[i].state == TrackState.Tracked]
         dists = matching.iou_distance(r_tracked_stracks, detections_second)
         matches, u_track, u_detection_second = matching.linear_assignment(dists, thresh=0.5)

@@ -52,12 +52,8 @@ class DiffMOT():
 
     def train(self):
         for epoch in range(1, self.config.epochs + 1):
-            # 设置数据增强
             self.train_dataset.augment = self.config.augment
-            # 初始化进度条
             pbar = tqdm(self.train_data_loader, ncols=80)
-
-            # 遍历批次的数据
             for batch in pbar:
                 for k in batch:
                     batch[k] = batch[k].to(device='cuda', non_blocking=True)
@@ -150,8 +146,6 @@ class DiffMOT():
 
         print("> Everything built. Have fun :)")
 
-
-    #目录以及日志的构建
     def _build_dir(self):
         self.model_dir = osp.join("./experiments",self.config.eval_expname)
         self.log_writer = SummaryWriter(log_dir=self.model_dir)
@@ -181,23 +175,14 @@ class DiffMOT():
 
         print("> Directory built!")
 
-
-    #优化器的构建（Adam优化器）
     def _build_optimizer(self):
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.lr)
         self.scheduler = optim.lr_scheduler.ExponentialLR(self.optimizer,gamma=0.98)
         print("> Optimizer built!")
 
 
-    #编码器的构建
     def _build_encoder(self):
-        # 历史运动嵌入向量包括目标的位置信息（通过位置编码）和历史运动数据
-        # 还通过 Transformer 编码器提取了目标的长期运动模式
-        # 最终形成一个聚合的全局运动嵌入
         self.encoder = History_motion_embedding()
-
-
-    # 用于构建和初始化模型
     def _build_model(self):
         """ Define Model """
         config = self.config

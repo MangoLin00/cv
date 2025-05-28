@@ -6,18 +6,10 @@ class VarianceSchedule(Module):
     def __init__(self, num_steps, mode='linear',beta_1=1e-4, beta_T=5e-2,cosine_s=8e-3):
         super().__init__()
         assert mode in ('linear', 'cosine')
-
-        """
-        num_steps：扩散过程的时间步数（通常是从 1 到 num_steps 的整数）。
-        mode：噪声调度的方式，可以是 'linear' 或 'cosine'。这决定了每个时间步的噪声强度（beta）如何变化。
-        beta_1 和 beta_T：表示初始噪声强度（beta_1）和最终噪声强度（beta_T）的值。beta 控制每个时间步的噪声强度。
-        cosine_s：当选择 cosine 模式时，它是与噪声调度相关的一个常数。
-        """
         self.num_steps = num_steps
         self.beta_1 = beta_1
         self.beta_T = beta_T
         self.mode = mode
-
         if mode == 'linear':
             betas = torch.linspace(beta_1, beta_T, steps=num_steps)
         elif mode == 'cosine':
@@ -60,23 +52,14 @@ class VarianceSchedule(Module):
         sigmas = self.sigmas_flex[t] * flexibility + self.sigmas_inflex[t] * (1 - flexibility)
         return sigmas
 
-
-    """
-     结合了位置编码、时间步嵌入和上下文特征的融合，利用多个 MFL 层和 Transformer 编码器进行特征处理和提取。
-     最终输出融合后的特征
-    """
-
 class HMINet(Module):
 
     def __init__(self, point_dim=4, context_dim=256, tf_layer=3, residual=False):
         super().__init__()
         self.residual = residual
-
-        # 用于在输入特征中加入位置信息
         self.pos_emb = PositionalEncoding(d_model=2*context_dim, dropout=0.1, max_len=24)
         self.pos_emb2= PositionalEncoding(d_model=context_dim, dropout=0.1, max_len=24)
 
-        # 特征融合层（MFL）用于对输入特征进行融合
         self.concat1 = MFL(4, context_dim // 2, context_dim+3)
         self.concat1_2 = MFL(context_dim // 2, context_dim, context_dim + 3)
         self.concat1_3 = MFL(context_dim, 2 * context_dim, context_dim + 3)
@@ -85,8 +68,6 @@ class HMINet(Module):
         self.transformer_encoder = nn.TransformerEncoder(self.layer, num_layers=tf_layer)
         self.layer2 = nn.TransformerEncoderLayer(d_model=context_dim, nhead=4, dim_feedforward=2 * context_dim)
         self.transformer_encoder2 = nn.TransformerEncoder(self.layer2, num_layers=tf_layer)
-
-        # 定义MFL层concat3，将特征降维
         self.concat3 = MFL(2*context_dim,context_dim, context_dim+3)
         self.concat4 = MFL(context_dim,context_dim//2, context_dim+3)
         self.linear = MFL(context_dim//2, 4, context_dim+3)
@@ -94,14 +75,10 @@ class HMINet(Module):
 
     def forward(self, x, beta, context):
         batch_size = x.size(0)
-        # beta：时间步信息。
-        beta = beta.view(batch_size, 1)          # (B, 1)
-        # context：上下文特征
-        context = context.view(batch_size, -1)   # (B, F)
-
-        # 时间嵌入和上下文特征融合
-        time_emb = torch.cat([beta, torch.sin(beta), torch.cos(beta)], dim=-1)  # (B, 3)
-        ctx_emb = torch.cat([time_emb, context], dim=-1)    # (B, F+3)
+        beta = beta.view(batch_size, 1)          
+        context = context.view(batch_size, -1)   
+        time_emb = torch.cat([beta, torch.sin(beta), torch.cos(beta)], dim=-1)  
+        ctx_emb = torch.cat([time_emb, context], dim=-1)    
 
         x = self.concat1_3(ctx_emb, self.concat1_2(ctx_emb, self.concat1(ctx_emb,x)))
         final_emb = x.unsqueeze(0)

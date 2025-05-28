@@ -54,18 +54,10 @@ class PositionalEncoding(nn.Module):
 
 
 
-        # MFL 层的作用是根据输入的特征 x 和上下文特征 ctx 计算一个加权的输出，采用了门控机制（gate）和动态偏置（bias）
-        # 具体来说：
-        # x 会通过一个线性变换处理。
-        # 通过上下文特征 ctx，计算出一个门控值（gate）来调节输入特征的加权。
-        # 计算出一个基于 ctx 的偏置项（bias），并将其加到加权后的特征上。
 class MFL(Module):
     def __init__(self, dim_in, dim_out, dim_ctx):
         super(MFL, self).__init__()
 
-        # self._layer：一个线性层，用于对输入 x 进行变换，将其从 dim_in 维度映射到 dim_out 维度。
-        # self._hyper_bias：另一个线性层，用于计算偏置（bias）。这个偏置是通过上下文特征 ctx 计算的，映射到 dim_out 维度，并且没有偏置项（bias=False）。
-        # self._hyper_gate：这个线性层用于计算门控（gate），即一个根据上下文特征计算的动态权重，映射到 dim_out 维度。
         self._layer = Linear(dim_in, dim_out)
         self._hyper_bias = Linear(dim_ctx, dim_out, bias=False)
         self._hyper_gate = Linear(dim_ctx, dim_out)
